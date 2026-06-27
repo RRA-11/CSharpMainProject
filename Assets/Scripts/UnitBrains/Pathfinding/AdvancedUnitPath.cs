@@ -1,174 +1,163 @@
 using Model;
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using UnitBrains.Pathfinding;
 using UnityEngine;
-using static Codice.CM.Common.CmCallContext;
-using static UnityEngine.GraphicsBuffer;
 
-public class AdvancedUnitPath : BaseUnitPath
+namespace UnitBrains.Pathfinding
 {
-    IReadOnlyRuntimeModel _runtimeModel;
-    Vector2Int _startPoint;
-    Vector2Int _endPoint;
-
-    public AdvancedUnitPath(IReadOnlyRuntimeModel runtimeModel, Vector2Int startPoint, Vector2Int endPoint) : base(runtimeModel, startPoint, endPoint)
+    public class NewUnitPath : BaseUnitPath
     {
-        _runtimeModel = runtimeModel;
-        _startPoint = startPoint;
-        _endPoint = endPoint;
-    }
+        protected Vector2Int[] dx = {
+            Vector2Int.down,
+            Vector2Int.up,
+            Vector2Int.left,
+            Vector2Int.right
+        };
+        protected const int MaxLength = 150;
 
-    
-
-    protected override void Calculate()
-    {
-        List<Node> nodePath = FindPath();
-        if (nodePath == null || nodePath.Count == 0)
+        public NewUnitPath(IReadOnlyRuntimeModel runtimeModel, Vector2Int startPoint, Vector2Int endPoint) : base(runtimeModel, startPoint, endPoint)
         {
-            path = new[] { startPoint };
-            return;
+
         }
 
-
-        //var currentPoint = _startPoint;
-        //var result = new List<Vector2Int> { _startPoint };
-
-        //var counter = 0;
-        //while (currentPoint != _endPoint && counter++ < 200)
-        //{
-        //    var nextStep = GetNextStepFrom(currentPoint);
-        //    var hasLoop = result.Contains(nextStep);
-        //    result.Add(nextStep);
-        //    if (hasLoop)
-        //        break;
-        //    currentPoint = nextStep;
-        //}
-
-        path = nodePath
-                .Select(n => n.Pos)
-                .ToArray();
-    }
-
-    public List<Node> FindPath()
-    {
-        // 1. Используем актуальные startPoint и endPoint из базового класса
-        Node startNode = new Node(startPoint.x, startPoint.y);
-        Node targetNode = new Node(endPoint.x, endPoint.y);
-
-        // 2. Инициализируем стартовый узел
-        startNode.Cost = 0; // Путь до самого себя равен 0[cite: 3]
-        startNode.CalculateEstimate(targetNode.X, targetNode.Y);
-        startNode.CalculateValue();
-
-        List<Node> openList = new List<Node> { startNode };
-        List<Node> closedList = new List<Node>();
-
-        // Переменные для поиска "лучшего из возможного", если путь заблокирован
-        Node bestNodeSoFar = startNode;
-        float bestDistanceSoFar = float.MaxValue;
-
-        int counter = 0;
-        int maxIterations = 150; // Защита от бесконечных циклов
-
-        while (openList.Count > 0 && counter < maxIterations)
+        protected override void Calculate()
         {
-            counter++;
-
-            // Ищем узел с минимальным f-value (Value)
-            Node currentNode = openList[0];
-            foreach (var node in openList)
+            var listPath = FindPath();
+            // Проверка на случай, если ничего не было записано в найденный путь
+            if (FindPath().Count < 1)
             {
-                if (node.Value < currentNode.Value)
-                    currentNode = node;
+                path = null;
             }
-
-            // Обновляем лучший найденный узел по прямой дистанции до цели[cite: 4]
-            float distToTarget = Vector2Int.Distance(currentNode.Pos, endPoint);
-            if (distToTarget < bestDistanceSoFar)
+            else
             {
-                bestDistanceSoFar = distToTarget;
-                bestNodeSoFar = currentNode;
+                path = listPath.ToArray();
             }
+        }
 
-            // Если дошли до цели — возвращаем путь[cite: 1, 4]
-            if (currentNode.X == targetNode.X && currentNode.Y == targetNode.Y)
+        protected List<Vector2Int> FindPath()
+        {
+            // Проверка на случай, если старт и цель совпадают или находятся в 1 клетке друг от друга
+            bool isCardinalDirection = dx.Contains(endPoint - startPoint);
+            if (startPoint.Equals(endPoint) || isCardinalDirection == true)
+                return new List<Vector2Int> { startPoint };
+
+            Node startNode = new Node(startPoint);
+            Node targetNode = new Node(endPoint);
+
+            List<Node> openNode = new List<Node> { startNode };
+            HashSet<Node> closedList = new HashSet<Node>();
+            int counter = 0;
+            Node bestNodeSoFar = startNode; // Хранит лучший найденный узел (ближайший к цели)
+            float bestDistanceSoFar = float.MaxValue; // Расстояние лучшего узла до цели
+
+            // Инициализируем стартовый узел
+            startNode.CalculateEstimate(targetNode.Pos);
+            startNode.CalculateValue();
+
+            while (openNode.Count > 0 && counter < MaxLength)
             {
-                return BuildPathList(currentNode);
-            }
+                int minIndex = 0;
+                Node currentNode = openNode[0];
 
-            openList.Remove(currentNode);
-            closedList.Add(currentNode);
-
-            int[] dx = { -1, 0, 1, 0 };
-            int[] dy = { 0, 1, 0, -1 };
-
-            for (int i = 0; i < dx.Length; i++)
-            {
-                int newX = currentNode.X + dx[i];
-                int newY = currentNode.Y + dy[i];
-
-                // Проверяем, не обрабатывали ли мы уже эту клетку[cite: 4]
-                if (closedList.Any(n => n.X == newX && n.Y == newY))
-                    continue;
-
-                Node neighbor = new Node(newX, newY);
-
-                // Проверяем проходимость клетки[cite: 1, 4]
-                if (IsValid(neighbor, endPoint))
+                for (int i = 1; i < openNode.Count; i++)
                 {
-                    int newCost = currentNode.Cost + 1; // Шаг стоит 1[cite: 4]
-
-                    // Ищем, есть ли этот сосед уже в списке на проверку[cite: 1, 4]
-                    var existing = openList.FirstOrDefault(n => n.X == newX && n.Y == newY);
-
-                    if (existing != null)
+                    if (openNode[i].Value < currentNode.Value)
                     {
-                        if (newCost < existing.Cost)
-                        {
-                            existing.Cost = newCost;
-                            existing.Parent = currentNode;
-                            existing.CalculateValue();
-                        }
-                    }
-                    else
-                    {
-                        neighbor.Cost = newCost;
-                        neighbor.Parent = currentNode;
-                        neighbor.CalculateEstimate(targetNode.X, targetNode.Y);
-                        neighbor.CalculateValue();
-                        openList.Add(neighbor);
+                        currentNode = openNode[i];
+                        minIndex = i;
                     }
                 }
+
+                // Удаляем по индексу
+                openNode.RemoveAt(minIndex);
+
+                // Пропускаем, если узел уже обработан
+                if (closedList.Contains(currentNode))
+                    continue;
+
+                closedList.Add(currentNode);
+
+                // Обновляем лучший узел, если текущий ближе к цели
+                float currentDistance = CalculateDistance(currentNode.Pos, endPoint);
+                if (currentDistance < bestDistanceSoFar)
+                {
+                    bestDistanceSoFar = currentDistance;
+                    bestNodeSoFar = currentNode;
+                }
+
+                // Проверяем, достигли ли цели
+                if (endPoint.Equals(currentNode.Pos))
+                    return buildPath(currentNode);
+
+                // Исследуем соседей
+                foreach (var direction in dx)
+                {
+                    var nextStep = direction + currentNode.Pos;
+
+                    // Проверяем проходимость
+                    if (!runtimeModel.IsTileWalkable(nextStep) && !nextStep.Equals(endPoint))
+                        continue;
+
+                    Node neighbor = new Node(nextStep);
+
+                    // Пропускаем, если узел уже закрыт
+                    if (closedList.Contains(neighbor))
+                        continue;
+
+                    // Проверяем, есть ли сосед уже в openNode
+                    bool alreadyInOpen = false;
+                    for (int i = 0; i < openNode.Count; i++)
+                    {
+                        if (openNode[i].Equals(neighbor))
+                        {
+                            // Если нашли узел с той же позицией, обновляем его параметры,
+                            // если новый путь лучше (меньшее Value)
+                            int newCost = currentNode.Cost + neighbor.Cost;
+                            if (newCost < openNode[i].Cost)
+                            {
+                                openNode[i].Parent = currentNode;
+                                openNode[i].Cost = newCost;
+                                openNode[i].CalculateValue();
+                            }
+                            alreadyInOpen = true;
+                            break;
+                        }
+                    }
+
+                    if (!alreadyInOpen)
+                    {
+                        neighbor.Parent = currentNode;
+                        neighbor.Cost = currentNode.Cost + 10;
+                        neighbor.CalculateEstimate(targetNode.Pos);
+                        neighbor.CalculateValue();
+                        openNode.Add(neighbor);
+                    }
+                }
+
+                counter++;
             }
+
+            // Если достигли MaxLength, но не нашли путь — возвращаем путь к ближайшему найденному узлу
+            return buildPath(bestNodeSoFar);
         }
 
-        // Если путь не найден или кончились итерации, идем к ближайшей возможной точке[cite: 4]
-        return BuildPathList(bestNodeSoFar);
-    }
-
-    private List<Node> BuildPathList(Node node)
-    {
-        List<Node> result = new List<Node>();
-        while (node != null)
+        private float CalculateDistance(Vector2Int a, Vector2Int b)
         {
-            result.Add(node);
-            node = node.Parent;
+            var diff = a - b;
+            return Mathf.Sqrt(diff.x * diff.x + diff.y * diff.y);
         }
-        result.Reverse();
-        return result;
-    }
-    private bool IsValid(Node node, Vector2Int targetPos)
-    {
-        if(node.X < 0 || node.X >= _runtimeModel.RoMap.Width ||
-        node.Y < 0 || node.Y >= _runtimeModel.RoMap.Height)
-        return false;
 
-        if (node.X == targetPos.x && node.Y == targetPos.y)
-            return true;
-
-        return _runtimeModel.IsTileWalkable(node.Pos);
+        protected List<Vector2Int> buildPath(Node node)
+        {
+            List<Vector2Int> result = new();
+            while (node != null)
+            {
+                result.Add(node.Pos);
+                node = node.Parent;
+            }
+            result.Reverse();
+            return result;
+        }
     }
 }

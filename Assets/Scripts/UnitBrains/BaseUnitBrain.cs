@@ -38,7 +38,10 @@ namespace UnitBrains
 
         public virtual Vector2Int GetNextStep()
         {
-                _actionSwitched = true;
+            if (HasTargetsInRange())
+                return unit.Pos;
+
+            _actionSwitched = true;
             var target = runtimeModel.RoMap.Bases[
                 IsPlayerUnitBrain ? RuntimeModel.BotPlayerId : RuntimeModel.PlayerId];
 

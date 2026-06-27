@@ -1,4 +1,6 @@
 using System;
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace UnitBrains.Pathfinding
@@ -6,28 +8,35 @@ namespace UnitBrains.Pathfinding
     public class Node
     {
         public Vector2Int Pos;
-        public int X;
-        public int Y;
         public int Cost = 10;
         public int Estimate;
         public int Value;
         public Node Parent;
 
-        public Node(int x, int y)
+        public Node(Vector2Int pos)
         {
-            X = x;
-            Y = y;
-            Pos = new Vector2Int(x, y);
+            Pos = pos;
         }
 
-        public void CalculateEstimate(int targetX, int targetY)
+        public void CalculateEstimate(Vector2Int target)
         {
-            Estimate = Math.Abs(X - targetX) + Math.Abs(Y - targetY);
+            var diff = target - Pos;
+            Estimate = (Math.Abs(diff.x) + Math.Abs(diff.y)) * 10;
         }
 
         public void CalculateValue()
         {
             Value = Cost + Estimate;
         }
+
+        public override bool Equals(object obj)
+        {
+            if (ReferenceEquals(this, obj)) return true;
+            if (obj is Node other)
+                return Pos.Equals(other.Pos);
+            return false;
+        }
+
+        public override int GetHashCode() => Pos.GetHashCode();
     }
 }
